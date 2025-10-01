@@ -204,47 +204,8 @@ class RecolorApp(tk.Tk):
         top.rowconfigure(1, weight=1)
         for c in range(10): top.columnconfigure(c, weight=1 if c==9 else 0)
 
-        controls = ttk.Frame(top); controls.grid(row=2, column=0, columnspan=10, sticky="ew", pady=(0,6))
-        for c in range(20): controls.columnconfigure(c, weight=0)
-        controls.columnconfigure(19, weight=1)
-
-        ttk.Label(controls, text="Brightness exp (pow):").grid(row=0, column=0, sticky="w")
-        self.exp_var = tk.StringVar()
-        self.exp_var.trace_add("write", self._on_entry_change)
-        self.ent_exp = ttk.Entry(controls, width=10, textvariable=self.exp_var)
-        self.ent_exp.grid(row=0, column=1, sticky="w", padx=(4,16))
-
-        ttk.Label(controls, text="Lightness L× (pre-RGB):").grid(row=0, column=2, sticky="w")
-        self.lscale_var = tk.StringVar()
-        self.lscale_var.trace_add("write", self._on_entry_change)
-        self.ent_lscale = ttk.Entry(controls, width=8, textvariable=self.lscale_var)
-        self.ent_lscale.grid(row=0, column=3, sticky="w", padx=(4,8))
-
-        ttk.Label(controls, text="Clamp L[min,max]:").grid(row=0, column=4, sticky="w")
-        self.lmin_var = tk.StringVar(value="2")
-        self.lmax_var = tk.StringVar(value="126")
-        self.lmin_var.trace_add("write", self._on_entry_change)
-        self.lmax_var.trace_add("write", self._on_entry_change)
-        self.ent_lmin = ttk.Entry(controls, width=5, textvariable=self.lmin_var)
-        self.ent_lmin.grid(row=0, column=5, sticky="w", padx=(4,2))
-        self.ent_lmax = ttk.Entry(controls, width=5, textvariable=self.lmax_var)
-        self.ent_lmax.grid(row=0, column=6, sticky="w", padx=(2,12))
-
-        ttk.Label(controls, text="Output:").grid(row=0, column=7, sticky="w")
-        self.apply_var = tk.StringVar(value="To (shaded)")
-        self.cmb_apply = ttk.Combobox(
-            controls,
-            state="readonly",
-            width=12,
-            values=["To (shaded)", "To (no shade)", "Rebecca picker"],
-            textvariable=self.apply_var,
-        )
-        self.cmb_apply.current(0)
-        self.cmb_apply.grid(row=0, column=8, sticky="w", padx=(4,16))
-        self.cmb_apply.bind("<<ComboboxSelected>>", self._on_control_change)
-
         # Java array generation controls
-        arrbar = ttk.Frame(top); arrbar.grid(row=3, column=0, columnspan=10, sticky="ew", pady=(0,6))
+        arrbar = ttk.Frame(top); arrbar.grid(row=2, column=0, columnspan=10, sticky="ew", pady=(0,6))
         for c in range(20): arrbar.columnconfigure(c, weight=0)
         arrbar.columnconfigure(19, weight=1)
 
@@ -355,33 +316,7 @@ class RecolorApp(tk.Tk):
     # ---- Actions ----
 
     def _read_controls(self):
-        exp_txt = self.exp_var.get().strip()
-        exponent = None
-        if exp_txt:
-            try:
-                exponent = float(exp_txt)
-                if exponent <= 0.0:
-                    raise ValueError
-            except Exception as exc:
-                raise ValueError("Brightness exponent must be a positive number (e.g., 0.8, 1.2).") from exc
-        lscale_txt = self.lscale_var.get().strip()
-        lscale = 1.0
-        if lscale_txt:
-            try:
-                lscale = float(lscale_txt)
-                if lscale < 0.0:
-                    raise ValueError
-            except Exception as exc:
-                raise ValueError("Lightness scale must be a non-negative number (e.g., 1.0, 0.75, 1.2).") from exc
-        try:
-            lmin = int(self.lmin_var.get().strip() or "2")
-            lmax = int(self.lmax_var.get().strip() or "126")
-            if not (0 <= lmin <= 127 and 0 <= lmax <= 127 and lmin <= lmax):
-                raise ValueError
-        except Exception as exc:
-            raise ValueError("Clamp values must be integers within 0..127 and min ≤ max (default 2..126).") from exc
-        apply_to = self.apply_var.get()
-        return exponent, lscale, lmin, lmax, apply_to
+        return None, 1.0, 2, 126, "To (shaded)"
 
     def _index_to_rgb(self, packed:int, exponent:Optional[float], mode:str):
         h, s, l = unpack_hsl(packed)
@@ -399,12 +334,7 @@ class RecolorApp(tk.Tk):
         if self._run_after_id is not None:
             self.after_cancel(self._run_after_id)
             self._run_after_id = None
-        try:
-            args = self._read_controls()
-        except ValueError as exc:
-            self.status_var.set(f"Invalid input: {exc}")
-            return
-        exponent, lscale, lmin, lmax, apply_setting = args
+        exponent, lscale, lmin, lmax, apply_setting = self._read_controls()
 
         text = self.txt_input.get("1.0", "end")
         blocks = split_curly_blocks(text)
@@ -434,7 +364,7 @@ class RecolorApp(tk.Tk):
             count_blocks += 1
 
         self.status_var.set(
-            f"Parsed {count_blocks} block(s). Output {count_vals} ARGB values ({apply_setting}). exp={exponent if exponent is not None else 1.0}"
+            f"Parsed {count_blocks} block(s). Output {count_vals} ARGB values."
         )
 
     def schedule_conversion(self, *_):
@@ -446,12 +376,6 @@ class RecolorApp(tk.Tk):
         if self.txt_input.edit_modified():
             self.schedule_conversion()
             self.txt_input.edit_modified(False)
-
-    def _on_control_change(self, _event):
-        self.schedule_conversion()
-
-    def _on_entry_change(self, *_):
-        self.schedule_conversion()
 
     # ---- Copy helpers ----
 

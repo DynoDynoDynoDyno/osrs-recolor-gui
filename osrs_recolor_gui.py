@@ -342,6 +342,7 @@ class RecolorApp(tk.Tk):
         self.tree.delete(*self.tree.get_children())
         count_blocks = 0
         count_vals = 0
+        seen_argb = set()
 
         # Parse the apply_setting to determine what to output
         lower_apply = apply_setting.lower()
@@ -358,6 +359,9 @@ class RecolorApp(tk.Tk):
                     shaded = shade_lightness_on_index(idx, lscale, lmin, lmax)
                 r, g, b = self._index_to_rgb(shaded, exponent, mode)
                 argb = rgb_to_argb_int(r, g, b)
+                if argb in seen_argb:
+                    continue
+                seen_argb.add(argb)
                 self.tree.insert("", "end", values=(argb,))
                 count_vals += 1
 

@@ -232,7 +232,8 @@ class RecolorApp(tk.Tk):
         self.cmb_comparator.bind("<<ComboboxSelected>>", self._on_comparator_change)
 
         self.threshold_container = ttk.Frame(arrbar)
-        self.threshold_container.grid(row=0, column=6, columnspan=10, sticky="w")
+        self.threshold_container.grid(row=1, column=0, columnspan=20, sticky="ew", pady=(6, 0))
+        self.threshold_container.columnconfigure(0, weight=1)
         self._build_threshold_inputs()
         self._update_threshold_ui()
 
@@ -276,39 +277,57 @@ class RecolorApp(tk.Tk):
         self._threshold_frames = {}
 
         frame_single = ttk.Frame(self.threshold_container)
-        ttk.Label(frame_single, text="Threshold:").pack(side="left")
-        self.ent_thresh = ttk.Entry(frame_single, width=6)
+        ttk.Label(frame_single, text="Threshold:").grid(row=0, column=0, sticky="w")
+        self.ent_thresh = ttk.Entry(frame_single, width=8)
         self.ent_thresh.insert(0, "2")
-        self.ent_thresh.pack(side="left", padx=(4, 0))
+        self.ent_thresh.grid(row=0, column=1, sticky="w", padx=(4, 0))
         self._threshold_frames["SingleThresholdComparator"] = frame_single
 
         frame_channel = ttk.Frame(self.threshold_container)
-        ttk.Label(frame_channel, text="Thresholds H/S/L:").pack(side="left")
-        self.ent_thresh_c1 = ttk.Entry(frame_channel, width=6)
-        self.ent_thresh_c2 = ttk.Entry(frame_channel, width=6)
-        self.ent_thresh_c3 = ttk.Entry(frame_channel, width=6)
-        for ent in (self.ent_thresh_c1, self.ent_thresh_c2, self.ent_thresh_c3):
+        ttk.Label(frame_channel, text="Hue:").grid(row=0, column=0, sticky="w")
+        ttk.Label(frame_channel, text="Sat:").grid(row=0, column=2, sticky="w")
+        ttk.Label(frame_channel, text="Light:").grid(row=0, column=4, sticky="w")
+        self.ent_thresh_c1 = ttk.Entry(frame_channel, width=8)
+        self.ent_thresh_c2 = ttk.Entry(frame_channel, width=8)
+        self.ent_thresh_c3 = ttk.Entry(frame_channel, width=8)
+        for col, ent in enumerate((self.ent_thresh_c1, self.ent_thresh_c2, self.ent_thresh_c3)):
             ent.insert(0, "2")
-            ent.pack(side="left", padx=(4, 0))
+            frame_channel.grid_columnconfigure(col * 2 + 1, weight=0)
+        self.ent_thresh_c1.grid(row=0, column=1, sticky="w", padx=(4, 12))
+        self.ent_thresh_c2.grid(row=0, column=3, sticky="w", padx=(4, 12))
+        self.ent_thresh_c3.grid(row=0, column=5, sticky="w")
         self._threshold_frames["ChannelThresholdComparator"] = frame_channel
 
         frame_multi = ttk.Frame(self.threshold_container)
-        ttk.Label(frame_multi, text="Threshold arrays H/S/L (comma-separated):").pack(side="left")
-        self.ent_thresh_m1 = ttk.Entry(frame_multi, width=18)
-        self.ent_thresh_m2 = ttk.Entry(frame_multi, width=18)
-        self.ent_thresh_m3 = ttk.Entry(frame_multi, width=18)
-        for ent in (self.ent_thresh_m1, self.ent_thresh_m2, self.ent_thresh_m3):
-            ent.insert(0, "2")
-            ent.pack(side="left", padx=(4, 0))
+        frame_multi.columnconfigure(1, weight=1)
+        ttk.Label(
+            frame_multi,
+            text="Threshold arrays (comma-separated)",
+        ).grid(row=0, column=0, columnspan=2, sticky="w")
+
+        ttk.Label(frame_multi, text="Hue:").grid(row=1, column=0, sticky="w", pady=(4, 0))
+        self.ent_thresh_m1 = ttk.Entry(frame_multi)
+        self.ent_thresh_m1.insert(0, "2")
+        self.ent_thresh_m1.grid(row=1, column=1, sticky="ew", padx=(4, 0), pady=(4, 0))
+
+        ttk.Label(frame_multi, text="Sat:").grid(row=2, column=0, sticky="w", pady=(4, 0))
+        self.ent_thresh_m2 = ttk.Entry(frame_multi)
+        self.ent_thresh_m2.insert(0, "2")
+        self.ent_thresh_m2.grid(row=2, column=1, sticky="ew", padx=(4, 0), pady=(4, 0))
+
+        ttk.Label(frame_multi, text="Light:").grid(row=3, column=0, sticky="w", pady=(4, 0))
+        self.ent_thresh_m3 = ttk.Entry(frame_multi)
+        self.ent_thresh_m3.insert(0, "2")
+        self.ent_thresh_m3.grid(row=3, column=1, sticky="ew", padx=(4, 0), pady=(4, 0))
         self._threshold_frames["MultiChannelThresholdComparator"] = frame_multi
 
     def _update_threshold_ui(self):
         current = self.cmb_comparator.get()
         for frame in self._threshold_frames.values():
-            frame.pack_forget()
+            frame.grid_forget()
         frame = self._threshold_frames.get(current)
         if frame:
-            frame.pack(side="left")
+            frame.grid(row=0, column=0, sticky="ew")
 
     def _on_comparator_change(self, *_):
         self._update_threshold_ui()

@@ -3,10 +3,8 @@
 """
 OSRS Recolor Indices → Java ARGB (int only) GUI
 -----------------------------------------------
-- Paste one or more NPC-like blocks containing recolorFrom/recolorTo.
-- Choose conversion mode:
-    * OSRS Palette (offsets): H = h/64 + 1/128, S = s/8 + 1/16, L = l/128
-    * Jagex HSL (sat halving): H = h/63, S = s/7, L = l/127 with saturation halving at high Lbyte
+- Paste one or more NPC-like blocks containing recolorTo.
+- Conversion uses the OSRS palette offsets: H = h/64 + 1/128, S = s/8 + 1/16, L = l/128.
 - Optional pre-RGB lightness shading on the HSL index (l' = clamp(int(l*scale), min, max)).
 - Optional brightness exponent (pow) post HSL→RGB (r=g=b=channel**exp).
 - Outputs ONLY Java ARGB signed ints (0xFFRRGGBB) as a flat list.
@@ -32,18 +30,6 @@ def hsl_bits_to_floats_osrs_offsets(h:int, s:int, l:int) -> Tuple[float,float,fl
     H = h / 64.0 + 1.0/128.0
     S = s / 8.0  + 1.0/16.0
     L = l / 128.0
-    return H, S, L
-
-def hsl_bits_to_floats_jagex_sat_halving(h:int, s:int, l:int) -> Tuple[float,float,float]:
-    Lbyte = l * 2
-    s2 = s
-    if Lbyte > 179: s2 >>= 1
-    if Lbyte > 192: s2 >>= 1
-    if Lbyte > 217: s2 >>= 1
-    if Lbyte > 243: s2 >>= 1
-    H = h / 63.0  # Fixed: was "if 63 else 0.0"
-    S = s2 / 7.0
-    L = l / 127.0  # Fixed: was "if 127 else 0.0"
     return H, S, L
 
 def _hue2rgb(f: float, a: float, b: float) -> float:
@@ -167,7 +153,7 @@ class RecolorApp(tk.Tk):
         top = ttk.Frame(self, padding=8); top.grid(row=0, column=0, sticky="nsew")
         self.rowconfigure(0, weight=1); self.columnconfigure(0, weight=1)
 
-        ttk.Label(top, text="Paste one or more blocks (or a list) containing recolorFrom / recolorTo:").grid(row=0, column=0, columnspan=10, sticky="w")
+        ttk.Label(top, text="Paste one or more blocks (or a list) containing recolorTo:").grid(row=0, column=0, columnspan=10, sticky="w")
         self.txt_input = scrolledtext.ScrolledText(top, height=14, wrap="word")
         self.txt_input.grid(row=1, column=0, columnspan=10, sticky="nsew", pady=(4, 8))
         top.rowconfigure(1, weight=1)
@@ -177,52 +163,39 @@ class RecolorApp(tk.Tk):
         for c in range(20): controls.columnconfigure(c, weight=0)
         controls.columnconfigure(19, weight=1)
 
-        ttk.Label(controls, text="Mode:").grid(row=0, column=0, sticky="w")
-        self.mode_var = tk.StringVar(value="OSRS Palette (offsets)")
-        self.cmb_mode = ttk.Combobox(
-            controls,
-            state="readonly",
-            width=22,
-            values=["OSRS Palette (offsets)", "Jagex HSL (sat halving)"],
-            textvariable=self.mode_var,
-        )
-        self.cmb_mode.current(0)
-        self.cmb_mode.grid(row=0, column=1, sticky="w", padx=(4,16))
-        self.cmb_mode.bind("<<ComboboxSelected>>", self._on_control_change)
-
-        ttk.Label(controls, text="Brightness exp (pow):").grid(row=0, column=2, sticky="w")
+        ttk.Label(controls, text="Brightness exp (pow):").grid(row=0, column=0, sticky="w")
         self.exp_var = tk.StringVar()
         self.exp_var.trace_add("write", self._on_entry_change)
         self.ent_exp = ttk.Entry(controls, width=10, textvariable=self.exp_var)
-        self.ent_exp.grid(row=0, column=3, sticky="w", padx=(4,16))
+        self.ent_exp.grid(row=0, column=1, sticky="w", padx=(4,16))
 
-        ttk.Label(controls, text="Lightness L× (pre-RGB):").grid(row=0, column=4, sticky="w")
+        ttk.Label(controls, text="Lightness L× (pre-RGB):").grid(row=0, column=2, sticky="w")
         self.lscale_var = tk.StringVar()
         self.lscale_var.trace_add("write", self._on_entry_change)
         self.ent_lscale = ttk.Entry(controls, width=8, textvariable=self.lscale_var)
-        self.ent_lscale.grid(row=0, column=5, sticky="w", padx=(4,8))
+        self.ent_lscale.grid(row=0, column=3, sticky="w", padx=(4,8))
 
-        ttk.Label(controls, text="Clamp L[min,max]:").grid(row=0, column=6, sticky="w")
+        ttk.Label(controls, text="Clamp L[min,max]:").grid(row=0, column=4, sticky="w")
         self.lmin_var = tk.StringVar(value="2")
         self.lmax_var = tk.StringVar(value="126")
         self.lmin_var.trace_add("write", self._on_entry_change)
         self.lmax_var.trace_add("write", self._on_entry_change)
         self.ent_lmin = ttk.Entry(controls, width=5, textvariable=self.lmin_var)
-        self.ent_lmin.grid(row=0, column=7, sticky="w", padx=(4,2))
+        self.ent_lmin.grid(row=0, column=5, sticky="w", padx=(4,2))
         self.ent_lmax = ttk.Entry(controls, width=5, textvariable=self.lmax_var)
-        self.ent_lmax.grid(row=0, column=8, sticky="w", padx=(2,12))
+        self.ent_lmax.grid(row=0, column=6, sticky="w", padx=(2,12))
 
-        ttk.Label(controls, text="Output:").grid(row=0, column=9, sticky="w")
+        ttk.Label(controls, text="Output:").grid(row=0, column=7, sticky="w")
         self.apply_var = tk.StringVar(value="To (shaded)")
         self.cmb_apply = ttk.Combobox(
             controls,
             state="readonly",
             width=12,
-            values=["To (shaded)","To (no shade)","From (shaded)","From (no shade)","Both (shaded)","Both (no shade)"],
+            values=["To (shaded)", "To (no shade)"],
             textvariable=self.apply_var,
         )
         self.cmb_apply.current(0)
-        self.cmb_apply.grid(row=0, column=10, sticky="w", padx=(4,16))
+        self.cmb_apply.grid(row=0, column=8, sticky="w", padx=(4,16))
         self.cmb_apply.bind("<<ComboboxSelected>>", self._on_control_change)
 
         # Java array generation controls
@@ -231,10 +204,10 @@ class RecolorApp(tk.Tk):
         arrbar.columnconfigure(19, weight=1)
 
         ttk.Label(arrbar, text="Array name:").grid(row=0, column=0, sticky="w")
-        self.ent_arrname = ttk.Entry(arrbar, width=30); self.ent_arrname.insert(0, "GUARD_HIGHLIGHT"); self.ent_arrname.grid(row=0, column=1, sticky="w", padx=(4,12))
+        self.ent_arrname = ttk.Entry(arrbar, width=30); self.ent_arrname.insert(0, "SearchableArray"); self.ent_arrname.grid(row=0, column=1, sticky="w", padx=(4,12))
 
         ttk.Label(arrbar, text="ColorModel:").grid(row=0, column=2, sticky="w")
-        self.cmb_colormodel = ttk.Combobox(arrbar, state="readonly", width=8, values=["RGB","HSL"])
+        self.cmb_colormodel = ttk.Combobox(arrbar, state="readonly", width=8, values=["HSL","RGB"])
         self.cmb_colormodel.current(0); self.cmb_colormodel.grid(row=0, column=3, sticky="w", padx=(4,12))
 
         ttk.Label(arrbar, text="Threshold:").grid(row=0, column=4, sticky="w")
@@ -279,7 +252,6 @@ class RecolorApp(tk.Tk):
     # ---- Actions ----
 
     def _read_controls(self):
-        mode = self.mode_var.get()
         exp_txt = self.exp_var.get().strip()
         exponent = None
         if exp_txt:
@@ -306,14 +278,11 @@ class RecolorApp(tk.Tk):
         except Exception as exc:
             raise ValueError("Clamp values must be integers within 0..127 and min ≤ max (default 2..126).") from exc
         apply_to = self.apply_var.get()
-        return mode, exponent, lscale, lmin, lmax, apply_to
+        return exponent, lscale, lmin, lmax, apply_to
 
-    def _index_to_rgb_with_mode(self, packed:int, exponent:Optional[float], mode:str):
+    def _index_to_rgb(self, packed:int, exponent:Optional[float]):
         h, s, l = unpack_hsl(packed)
-        if mode.startswith("OSRS"):
-            H, S, L = hsl_bits_to_floats_osrs_offsets(h, s, l)
-        else:
-            H, S, L = hsl_bits_to_floats_jagex_sat_halving(h, s, l)
+        H, S, L = hsl_bits_to_floats_osrs_offsets(h, s, l)
         rgb01 = hsl_to_rgb01(H, S, L)
         rgb01 = apply_brightness_exponent(rgb01, exponent)
         return rgb01_to_rgb8(rgb01)
@@ -327,7 +296,7 @@ class RecolorApp(tk.Tk):
         except ValueError as exc:
             self.status_var.set(f"Invalid input: {exc}")
             return
-        mode, exponent, lscale, lmin, lmax, apply_setting = args
+        exponent, lscale, lmin, lmax, apply_setting = args
 
         text = self.txt_input.get("1.0", "end")
         blocks = split_curly_blocks(text)
@@ -338,33 +307,25 @@ class RecolorApp(tk.Tk):
 
         # Parse the apply_setting to determine what to output
         use_shading = "shaded" in apply_setting.lower()
-        
+
         for b in blocks:
-            arr_from = find_array_after("recolorFrom", b) or []
             arr_to = find_array_after("recolorTo", b) or []
-            
-            # Determine which arrays to process based on setting
-            arrays_to_process = []
-            if "Both" in apply_setting:
-                arrays_to_process = arr_from + arr_to
-            elif "From" in apply_setting:
-                arrays_to_process = arr_from
-            else:  # "To" in apply_setting
-                arrays_to_process = arr_to
-            
+
             # Process each index
-            for idx in arrays_to_process:
+            for idx in arr_to:
                 shaded = idx
                 if use_shading:
                     shaded = shade_lightness_on_index(idx, lscale, lmin, lmax)
-                r, g, b = self._index_to_rgb_with_mode(shaded, exponent, mode)
+                r, g, b = self._index_to_rgb(shaded, exponent)
                 argb = rgb_to_argb_int(r, g, b)
                 self.tree.insert("", "end", values=(argb,))
                 count_vals += 1
 
             count_blocks += 1
 
-        self.status_var.set(f"Parsed {count_blocks} block(s). Output {count_vals} ARGB values ({apply_setting}). mode={mode} exp={exponent if exponent is not None else 1.0}")
+        self.status_var.set(
+            f"Parsed {count_blocks} block(s). Output {count_vals} ARGB values ({apply_setting}). exp={exponent if exponent is not None else 1.0}"
+        )
 
     def schedule_conversion(self, *_):
         if self._run_after_id is not None:

@@ -2,8 +2,6 @@ import math
 import pathlib
 import sys
 
-import pytest
-
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from osrs_recolor_gui import (
@@ -12,7 +10,6 @@ from osrs_recolor_gui import (
     find_array_after,
     find_id,
     find_name,
-    hsl_bits_to_floats_jagex_sat_halving,
     hsl_bits_to_floats_osrs_offsets,
     pack_hsl,
     rgb01_to_rgb8,
@@ -41,17 +38,6 @@ def test_osrs_offset_conversion():
     assert math.isclose(h2, 63 / 64.0 + 1.0 / 128.0)
     assert math.isclose(s2, 7 / 8.0 + 1.0 / 16.0)
     assert math.isclose(l2, 127 / 128.0)
-
-
-def test_jagex_sat_halving():
-    h, s, l = hsl_bits_to_floats_jagex_sat_halving(63, 7, 126)
-    assert math.isclose(h, 63 / 63.0)
-    assert math.isclose(l, 126 / 127.0)
-    assert s == 0.0  # saturation fully halved at high lightness
-
-    _, s_mid, _ = hsl_bits_to_floats_jagex_sat_halving(12, 6, 80)
-    assert s_mid == pytest.approx(6 / 7.0)
-
 
 def test_apply_brightness_exponent_identity():
     rgb = (0.25, 0.5, 0.75)

@@ -255,8 +255,25 @@ class RecolorApp(tk.Tk):
         self.cmb_colormodel = ttk.Combobox(arrbar, state="readonly", width=8, values=["HSL","RGB"])
         self.cmb_colormodel.current(0); self.cmb_colormodel.grid(row=0, column=3, sticky="w", padx=(4,12))
 
-        ttk.Label(arrbar, text="Threshold:").grid(row=0, column=4, sticky="w")
-        self.ent_thresh = ttk.Entry(arrbar, width=6); self.ent_thresh.insert(0, "2"); self.ent_thresh.grid(row=0, column=5, sticky="w", padx=(4,16))
+        ttk.Label(arrbar, text="Comparator:").grid(row=0, column=4, sticky="w")
+        self.cmb_comparator = ttk.Combobox(
+            arrbar,
+            state="readonly",
+            width=28,
+            values=[
+                "SingleThresholdComparator",
+                "ChannelThresholdComparator",
+                "MultiChannelThresholdComparator",
+            ],
+        )
+        self.cmb_comparator.current(0)
+        self.cmb_comparator.grid(row=0, column=5, sticky="w", padx=(4,12))
+        self.cmb_comparator.bind("<<ComboboxSelected>>", self._on_comparator_change)
+
+        self.threshold_container = ttk.Frame(arrbar)
+        self.threshold_container.grid(row=0, column=6, columnspan=10, sticky="w")
+        self._build_threshold_inputs()
+        self._update_threshold_ui()
 
         # Output tab: ARGB only
         bottom = ttk.Frame(self, padding=(8,0,8,8)); bottom.grid(row=1, column=0, sticky="nsew"); self.rowconfigure(1, weight=1)
@@ -293,6 +310,47 @@ class RecolorApp(tk.Tk):
         self.txt_input.bind("<<Modified>>", self._on_text_modified)
 
         self.schedule_conversion()
+
+    def _build_threshold_inputs(self):
+        self._threshold_frames = {}
+
+        frame_single = ttk.Frame(self.threshold_container)
+        ttk.Label(frame_single, text="Threshold:").pack(side="left")
+        self.ent_thresh = ttk.Entry(frame_single, width=6)
+        self.ent_thresh.insert(0, "2")
+        self.ent_thresh.pack(side="left", padx=(4, 0))
+        self._threshold_frames["SingleThresholdComparator"] = frame_single
+
+        frame_channel = ttk.Frame(self.threshold_container)
+        ttk.Label(frame_channel, text="Thresholds H/S/L:").pack(side="left")
+        self.ent_thresh_c1 = ttk.Entry(frame_channel, width=6)
+        self.ent_thresh_c2 = ttk.Entry(frame_channel, width=6)
+        self.ent_thresh_c3 = ttk.Entry(frame_channel, width=6)
+        for ent in (self.ent_thresh_c1, self.ent_thresh_c2, self.ent_thresh_c3):
+            ent.insert(0, "2")
+            ent.pack(side="left", padx=(4, 0))
+        self._threshold_frames["ChannelThresholdComparator"] = frame_channel
+
+        frame_multi = ttk.Frame(self.threshold_container)
+        ttk.Label(frame_multi, text="Threshold arrays H/S/L (comma-separated):").pack(side="left")
+        self.ent_thresh_m1 = ttk.Entry(frame_multi, width=18)
+        self.ent_thresh_m2 = ttk.Entry(frame_multi, width=18)
+        self.ent_thresh_m3 = ttk.Entry(frame_multi, width=18)
+        for ent in (self.ent_thresh_m1, self.ent_thresh_m2, self.ent_thresh_m3):
+            ent.insert(0, "2")
+            ent.pack(side="left", padx=(4, 0))
+        self._threshold_frames["MultiChannelThresholdComparator"] = frame_multi
+
+    def _update_threshold_ui(self):
+        current = self.cmb_comparator.get()
+        for frame in self._threshold_frames.values():
+            frame.pack_forget()
+        frame = self._threshold_frames.get(current)
+        if frame:
+            frame.pack(side="left")
+
+    def _on_comparator_change(self, *_):
+        self._update_threshold_ui()
 
     # ---- Actions ----
 
@@ -397,6 +455,50 @@ class RecolorApp(tk.Tk):
 
     # ---- Copy helpers ----
 
+    def _parse_int_entry(self, entry: ttk.Entry, label: str) -> int:
+        txt = entry.get().strip()
+        if not txt:
+            raise ValueError(f"{label} must be an integer (e.g., 2).")
+        try:
+            return int(txt)
+        except Exception as exc:
+            raise ValueError(f"{label} must be an integer (e.g., 2).") from exc
+
+    def _parse_int_array(self, text: str, label: str) -> List[int]:
+        parts = [p.strip() for p in text.split(',') if p.strip()]
+        if not parts:
+            raise ValueError(f"{label} requires a comma-separated list of integers (e.g., 1,2,3).")
+        vals = []
+        for part in parts:
+            try:
+                vals.append(int(part))
+            except Exception as exc:
+                raise ValueError(f"{label} requires a comma-separated list of integers (e.g., 1,2,3).") from exc
+        return vals
+
+    def _build_comparator_code(self) -> str:
+        comparator = self.cmb_comparator.get()
+        if comparator == "SingleThresholdComparator":
+            thr = self._parse_int_entry(self.ent_thresh, "Threshold")
+            return f"new SingleThresholdComparator({thr})"
+        if comparator == "ChannelThresholdComparator":
+            h_thr = self._parse_int_entry(self.ent_thresh_c1, "Hue threshold")
+            s_thr = self._parse_int_entry(self.ent_thresh_c2, "Saturation threshold")
+            l_thr = self._parse_int_entry(self.ent_thresh_c3, "Lightness threshold")
+            return f"new ChannelThresholdComparator({h_thr}, {s_thr}, {l_thr})"
+        if comparator == "MultiChannelThresholdComparator":
+            h_arr = self._parse_int_array(self.ent_thresh_m1.get(), "Hue threshold array")
+            s_arr = self._parse_int_array(self.ent_thresh_m2.get(), "Saturation threshold array")
+            l_arr = self._parse_int_array(self.ent_thresh_m3.get(), "Lightness threshold array")
+            h_txt = ", ".join(str(v) for v in h_arr)
+            s_txt = ", ".join(str(v) for v in s_arr)
+            l_txt = ", ".join(str(v) for v in l_arr)
+            return (
+                "new MultiChannelThresholdComparator("
+                f"new int[]{{{h_txt}}}, new int[]{{{s_txt}}}, new int[]{{{l_txt}}})"
+            )
+        raise ValueError("Unsupported comparator selection.")
+
     def _collect_argb(self) -> List[int]:
         items = self.tree.get_children()
         vals = []
@@ -419,9 +521,9 @@ class RecolorApp(tk.Tk):
             return
         model = self.cmb_colormodel.get().strip()
         try:
-            thr = int(self.ent_thresh.get().strip())
-        except Exception:
-            messagebox.showerror("Threshold", "Threshold must be an integer (e.g., 2).")
+            comparator_code = self._build_comparator_code()
+        except ValueError as exc:
+            messagebox.showerror("Comparator", str(exc))
             return
 
         # Build formatted Java code
@@ -433,7 +535,7 @@ class RecolorApp(tk.Tk):
         for i, s in enumerate(decs):
             pad = " " * (w - len(s))
             comma = "," if i < len(decs) - 1 else ""
-            lines.append(f"      new SearchablePixel({s}{pad}, new SingleThresholdComparator({thr}), ColorModel.{model}){comma}")
+            lines.append(f"      new SearchablePixel({s}{pad}, {comparator_code}, ColorModel.{model}){comma}")
         lines.append("};")
         data = "\n".join(lines)
 

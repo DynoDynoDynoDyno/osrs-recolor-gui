@@ -11,10 +11,8 @@ OSRS Recolor Indices → Java ARGB (int only) GUI
 - Optional brightness exponent (pow) post HSL→RGB (r=g=b=channel**exp).
 - Outputs ONLY Java ARGB signed ints (0xFFRRGGBB) as a flat list.
 
-Copy helpers:
-- Copy ARGB (selected)
-- Copy ARGB (all)
-- Copy Java SearchablePixel array (selected/all) with customizable array name, ColorModel, and threshold.
+Copy helper:
+- Copy Java SearchablePixel array (all) with customizable array name, ColorModel, and threshold.
 """
 import re
 import tkinter as tk
@@ -162,6 +160,7 @@ class RecolorApp(tk.Tk):
         self.title("Recolor → Java ARGB (int only)")
         self.geometry("980x700")
         self.minsize(860, 620)
+        self._run_after_id = None
         self._build_ui()
 
     def _build_ui(self):
@@ -179,25 +178,52 @@ class RecolorApp(tk.Tk):
         controls.columnconfigure(19, weight=1)
 
         ttk.Label(controls, text="Mode:").grid(row=0, column=0, sticky="w")
-        self.cmb_mode = ttk.Combobox(controls, state="readonly", width=22, values=["OSRS Palette (offsets)", "Jagex HSL (sat halving)"])
-        self.cmb_mode.current(0); self.cmb_mode.grid(row=0, column=1, sticky="w", padx=(4,16))
+        self.mode_var = tk.StringVar(value="OSRS Palette (offsets)")
+        self.cmb_mode = ttk.Combobox(
+            controls,
+            state="readonly",
+            width=22,
+            values=["OSRS Palette (offsets)", "Jagex HSL (sat halving)"],
+            textvariable=self.mode_var,
+        )
+        self.cmb_mode.current(0)
+        self.cmb_mode.grid(row=0, column=1, sticky="w", padx=(4,16))
+        self.cmb_mode.bind("<<ComboboxSelected>>", self._on_control_change)
 
         ttk.Label(controls, text="Brightness exp (pow):").grid(row=0, column=2, sticky="w")
-        self.ent_exp = ttk.Entry(controls, width=10); self.ent_exp.insert(0, ""); self.ent_exp.grid(row=0, column=3, sticky="w", padx=(4,16))
+        self.exp_var = tk.StringVar()
+        self.exp_var.trace_add("write", self._on_entry_change)
+        self.ent_exp = ttk.Entry(controls, width=10, textvariable=self.exp_var)
+        self.ent_exp.grid(row=0, column=3, sticky="w", padx=(4,16))
 
         ttk.Label(controls, text="Lightness L× (pre-RGB):").grid(row=0, column=4, sticky="w")
-        self.ent_lscale = ttk.Entry(controls, width=8); self.ent_lscale.insert(0, ""); self.ent_lscale.grid(row=0, column=5, sticky="w", padx=(4,8))
+        self.lscale_var = tk.StringVar()
+        self.lscale_var.trace_add("write", self._on_entry_change)
+        self.ent_lscale = ttk.Entry(controls, width=8, textvariable=self.lscale_var)
+        self.ent_lscale.grid(row=0, column=5, sticky="w", padx=(4,8))
 
         ttk.Label(controls, text="Clamp L[min,max]:").grid(row=0, column=6, sticky="w")
-        self.ent_lmin = ttk.Entry(controls, width=5); self.ent_lmin.insert(0, "2"); self.ent_lmin.grid(row=0, column=7, sticky="w", padx=(4,2))
-        self.ent_lmax = ttk.Entry(controls, width=5); self.ent_lmax.insert(0, "126"); self.ent_lmax.grid(row=0, column=8, sticky="w", padx=(2,12))
+        self.lmin_var = tk.StringVar(value="2")
+        self.lmax_var = tk.StringVar(value="126")
+        self.lmin_var.trace_add("write", self._on_entry_change)
+        self.lmax_var.trace_add("write", self._on_entry_change)
+        self.ent_lmin = ttk.Entry(controls, width=5, textvariable=self.lmin_var)
+        self.ent_lmin.grid(row=0, column=7, sticky="w", padx=(4,2))
+        self.ent_lmax = ttk.Entry(controls, width=5, textvariable=self.lmax_var)
+        self.ent_lmax.grid(row=0, column=8, sticky="w", padx=(2,12))
 
         ttk.Label(controls, text="Output:").grid(row=0, column=9, sticky="w")
-        self.cmb_apply = ttk.Combobox(controls, state="readonly", width=12, values=["To (shaded)","To (no shade)","From (shaded)","From (no shade)","Both (shaded)","Both (no shade)"])
-        self.cmb_apply.current(0); self.cmb_apply.grid(row=0, column=10, sticky="w", padx=(4,16))
-
-        self.btn_run = ttk.Button(controls, text="Run", command=self.run_conversion); self.btn_run.grid(row=0, column=11, sticky="w")
-        self.btn_clear = ttk.Button(controls, text="Clear", command=self.clear_input); self.btn_clear.grid(row=0, column=12, sticky="w", padx=(8,0))
+        self.apply_var = tk.StringVar(value="To (shaded)")
+        self.cmb_apply = ttk.Combobox(
+            controls,
+            state="readonly",
+            width=12,
+            values=["To (shaded)","To (no shade)","From (shaded)","From (no shade)","Both (shaded)","Both (no shade)"],
+            textvariable=self.apply_var,
+        )
+        self.cmb_apply.current(0)
+        self.cmb_apply.grid(row=0, column=10, sticky="w", padx=(4,16))
+        self.cmb_apply.bind("<<ComboboxSelected>>", self._on_control_change)
 
         # Java array generation controls
         arrbar = ttk.Frame(top); arrbar.grid(row=3, column=0, columnspan=10, sticky="ew", pady=(0,6))
@@ -221,10 +247,7 @@ class RecolorApp(tk.Tk):
         self.tab_argb = ttk.Frame(self.nb); self.nb.add(self.tab_argb, text="ARGB Output")
         tbar = ttk.Frame(self.tab_argb); tbar.pack(fill="x", padx=4, pady=4)
 
-        ttk.Button(tbar, text="Copy ARGB (selected)", command=lambda: self.copy_argb(selected=True)).pack(side="left")
-        ttk.Button(tbar, text="Copy ARGB (all)", command=lambda: self.copy_argb(selected=False)).pack(side="left", padx=(6,12))
-        ttk.Button(tbar, text="Copy Java array (selected)", command=lambda: self.copy_java_array(selected=True)).pack(side="left")
-        ttk.Button(tbar, text="Copy Java array (all)", command=lambda: self.copy_java_array(selected=False)).pack(side="left", padx=(6,0))
+        ttk.Button(tbar, text="Copy Java array (all)", command=self.copy_java_array_all).pack(side="left")
 
         self.status_var = tk.StringVar(value="Ready.")
         ttk.Label(tbar, textvariable=self.status_var).pack(side="right")
@@ -248,37 +271,41 @@ class RecolorApp(tk.Tk):
             "}\n"
         )
         self.txt_input.insert("1.0", example)
+        self.txt_input.edit_modified(False)
+        self.txt_input.bind("<<Modified>>", self._on_text_modified)
+
+        self.schedule_conversion()
 
     # ---- Actions ----
 
     def _read_controls(self):
-        mode = self.cmb_mode.get()
-        exp_txt = self.ent_exp.get().strip()
+        mode = self.mode_var.get()
+        exp_txt = self.exp_var.get().strip()
         exponent = None
         if exp_txt:
             try:
                 exponent = float(exp_txt)
-                if exponent <= 0.0: raise ValueError
-            except Exception:
-                messagebox.showerror("Invalid exponent", "Brightness exponent must be a positive number (e.g., 0.8, 1.2).")
-                return None
-        lscale_txt = self.ent_lscale.get().strip()
+                if exponent <= 0.0:
+                    raise ValueError
+            except Exception as exc:
+                raise ValueError("Brightness exponent must be a positive number (e.g., 0.8, 1.2).") from exc
+        lscale_txt = self.lscale_var.get().strip()
         lscale = 1.0
         if lscale_txt:
             try:
                 lscale = float(lscale_txt)
-                if lscale < 0.0: raise ValueError
-            except Exception:
-                messagebox.showerror("Invalid lightness scale", "Lightness scale must be a non-negative number (e.g., 1.0, 0.75, 1.2).")
-                return None
+                if lscale < 0.0:
+                    raise ValueError
+            except Exception as exc:
+                raise ValueError("Lightness scale must be a non-negative number (e.g., 1.0, 0.75, 1.2).") from exc
         try:
-            lmin = int(self.ent_lmin.get().strip() or "2")
-            lmax = int(self.ent_lmax.get().strip() or "126")
-            if not (0 <= lmin <= 127 and 0 <= lmax <= 127 and lmin <= lmax): raise ValueError
-        except Exception:
-            messagebox.showerror("Invalid clamp", "Clamp values must be integers within 0..127 and min ≤ max (default 2..126).")
-            return None
-        apply_to = self.cmb_apply.get()
+            lmin = int(self.lmin_var.get().strip() or "2")
+            lmax = int(self.lmax_var.get().strip() or "126")
+            if not (0 <= lmin <= 127 and 0 <= lmax <= 127 and lmin <= lmax):
+                raise ValueError
+        except Exception as exc:
+            raise ValueError("Clamp values must be integers within 0..127 and min ≤ max (default 2..126).") from exc
+        apply_to = self.apply_var.get()
         return mode, exponent, lscale, lmin, lmax, apply_to
 
     def _index_to_rgb_with_mode(self, packed:int, exponent:Optional[float], mode:str):
@@ -292,8 +319,14 @@ class RecolorApp(tk.Tk):
         return rgb01_to_rgb8(rgb01)
 
     def run_conversion(self):
-        args = self._read_controls()
-        if args is None: return
+        if self._run_after_id is not None:
+            self.after_cancel(self._run_after_id)
+            self._run_after_id = None
+        try:
+            args = self._read_controls()
+        except ValueError as exc:
+            self.status_var.set(f"Invalid input: {exc}")
+            return
         mode, exponent, lscale, lmin, lmax, apply_setting = args
 
         text = self.txt_input.get("1.0", "end")
@@ -331,18 +364,28 @@ class RecolorApp(tk.Tk):
 
             count_blocks += 1
 
-        shade_status = "with shading" if use_shading else "without shading"
         self.status_var.set(f"Parsed {count_blocks} block(s). Output {count_vals} ARGB values ({apply_setting}). mode={mode} exp={exponent if exponent is not None else 1.0}")
 
-    def clear_input(self):
-        self.txt_input.delete("1.0", "end")
-        self.tree.delete(*self.tree.get_children())
-        self.status_var.set("Cleared.")
+    def schedule_conversion(self, *_):
+        if self._run_after_id is not None:
+            self.after_cancel(self._run_after_id)
+        self._run_after_id = self.after(400, self.run_conversion)
+
+    def _on_text_modified(self, _event):
+        if self.txt_input.edit_modified():
+            self.schedule_conversion()
+            self.txt_input.edit_modified(False)
+
+    def _on_control_change(self, _event):
+        self.schedule_conversion()
+
+    def _on_entry_change(self, *_):
+        self.schedule_conversion()
 
     # ---- Copy helpers ----
 
-    def _collect_argb(self, selected: bool) -> List[int]:
-        items = self.tree.selection() if selected else self.tree.get_children()
+    def _collect_argb(self) -> List[int]:
+        items = self.tree.get_children()
         vals = []
         for iid in items:
             try:
@@ -352,17 +395,8 @@ class RecolorApp(tk.Tk):
                 pass
         return vals
 
-    def copy_argb(self, selected: bool):
-        vals = self._collect_argb(selected)
-        if not vals:
-            messagebox.showinfo("Copy", "No ARGB values to copy.")
-            return
-        data = "\n".join(str(v) for v in vals)
-        self.clipboard_clear(); self.clipboard_append(data); self.update()
-        messagebox.showinfo("Copy", f"Copied {len(vals)} ARGB int(s) to clipboard.")
-
-    def copy_java_array(self, selected: bool):
-        vals = self._collect_argb(selected)
+    def copy_java_array_all(self):
+        vals = self._collect_argb()
         if not vals:
             messagebox.showinfo("Copy", "No ARGB values to copy.")
             return

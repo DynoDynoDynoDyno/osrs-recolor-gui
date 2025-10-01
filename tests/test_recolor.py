@@ -1,3 +1,4 @@
+import colorsys
 import math
 import pathlib
 import sys
@@ -11,8 +12,10 @@ from osrs_recolor_gui import (
     find_id,
     find_name,
     hsl_bits_to_floats_osrs_offsets,
+    hsl_bits_to_rgb01_rebecca,
     pack_hsl,
     rgb01_to_rgb8,
+    rgb01_to_rgb8_round,
     rgb_to_argb_int,
     shade_lightness_on_index,
     split_curly_blocks,
@@ -57,6 +60,26 @@ def test_rgb01_to_rgb8_and_argb_sign():
     rgb = rgb01_to_rgb8((1.0, 1.0, 1.0))
     assert rgb == (255, 255, 255)
     assert rgb_to_argb_int(*rgb) == -1
+
+
+def test_rebecca_conversion_matches_colorsys():
+    samples = [
+        (0, 0, 0),
+        (10, 2, 32),
+        (31, 5, 90),
+        (63, 7, 127),
+    ]
+    for h, s, l in samples:
+        rgb = hsl_bits_to_rgb01_rebecca(h, s, l)
+        expected = colorsys.hls_to_rgb(((h / 63.0) if h else 0.0) % 1.0, l / 127.0, s / 7.0)
+        assert math.isclose(rgb[0], expected[0], rel_tol=1e-9, abs_tol=1e-9)
+        assert math.isclose(rgb[1], expected[1], rel_tol=1e-9, abs_tol=1e-9)
+        assert math.isclose(rgb[2], expected[2], rel_tol=1e-9, abs_tol=1e-9)
+
+
+def test_rgb01_to_rgb8_round_rounds_nearest():
+    rgb = rgb01_to_rgb8_round((0.5, 0.5, 0.5))
+    assert rgb == (128, 128, 128)
 
 
 def test_shade_lightness_on_index_clamps():

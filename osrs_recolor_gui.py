@@ -32,6 +32,43 @@ def hsl_bits_to_floats_osrs_offsets(h:int, s:int, l:int) -> Tuple[float,float,fl
     L = l / 128.0
     return H, S, L
 
+def hsl_bits_to_rgb01_rebecca(h:int, s:int, l:int) -> Tuple[float, float, float]:
+    """Replicates the HSL→RGB conversion used by Rebecca's color picker."""
+    hue = (h / 63.0) * 360.0 if h else 0.0
+    saturation = s / 7.0
+    lightness = l / 127.0
+
+    hue = hue % 360.0
+    if saturation <= 0.0:
+        return (lightness, lightness, lightness)
+
+    chroma = (1.0 - abs(2.0 * lightness - 1.0)) * saturation
+    h_prime = hue / 60.0
+    x = chroma * (1.0 - abs(h_prime % 2.0 - 1.0))
+
+    if h_prime < 1.0:
+        r1, g1, b1 = chroma, x, 0.0
+    elif h_prime < 2.0:
+        r1, g1, b1 = x, chroma, 0.0
+    elif h_prime < 3.0:
+        r1, g1, b1 = 0.0, chroma, x
+    elif h_prime < 4.0:
+        r1, g1, b1 = 0.0, x, chroma
+    elif h_prime < 5.0:
+        r1, g1, b1 = x, 0.0, chroma
+    else:
+        r1, g1, b1 = chroma, 0.0, x
+
+    m = lightness - chroma / 2.0
+    r = r1 + m
+    g = g1 + m
+    b = b1 + m
+
+    r = 0.0 if r < 0.0 else (1.0 if r > 1.0 else r)
+    g = 0.0 if g < 0.0 else (1.0 if g > 1.0 else g)
+    b = 0.0 if b < 0.0 else (1.0 if b > 1.0 else b)
+    return (r, g, b)
+
 def _hue2rgb(f: float, a: float, b: float) -> float:
     if f < 0.0: f += 1.0
     if f > 1.0: f -= 1.0
@@ -67,6 +104,14 @@ def apply_brightness_exponent(rgb01: Tuple[float,float,float], exponent: Optiona
 def rgb01_to_rgb8(rgb01: Tuple[float,float,float]) -> Tuple[int,int,int]:
     r, g, b = rgb01
     ri = int(r * 256.0); gi = int(g * 256.0); bi = int(b * 256.0)
+    ri = 0 if ri < 0 else (255 if ri > 255 else ri)
+    gi = 0 if gi < 0 else (255 if gi > 255 else gi)
+    bi = 0 if bi < 0 else (255 if bi > 255 else bi)
+    return ri, gi, bi
+
+def rgb01_to_rgb8_round(rgb01: Tuple[float,float,float]) -> Tuple[int,int,int]:
+    r, g, b = rgb01
+    ri = int(round(r * 255.0)); gi = int(round(g * 255.0)); bi = int(round(b * 255.0))
     ri = 0 if ri < 0 else (255 if ri > 255 else ri)
     gi = 0 if gi < 0 else (255 if gi > 255 else gi)
     bi = 0 if bi < 0 else (255 if bi > 255 else bi)
@@ -191,7 +236,7 @@ class RecolorApp(tk.Tk):
             controls,
             state="readonly",
             width=12,
-            values=["To (shaded)", "To (no shade)"],
+            values=["To (shaded)", "To (no shade)", "Rebecca picker"],
             textvariable=self.apply_var,
         )
         self.cmb_apply.current(0)
@@ -280,8 +325,13 @@ class RecolorApp(tk.Tk):
         apply_to = self.apply_var.get()
         return exponent, lscale, lmin, lmax, apply_to
 
-    def _index_to_rgb(self, packed:int, exponent:Optional[float]):
+    def _index_to_rgb(self, packed:int, exponent:Optional[float], mode:str):
         h, s, l = unpack_hsl(packed)
+        if mode == "rebecca":
+            rgb01 = hsl_bits_to_rgb01_rebecca(h, s, l)
+            rgb01 = apply_brightness_exponent(rgb01, exponent)
+            return rgb01_to_rgb8_round(rgb01)
+
         H, S, L = hsl_bits_to_floats_osrs_offsets(h, s, l)
         rgb01 = hsl_to_rgb01(H, S, L)
         rgb01 = apply_brightness_exponent(rgb01, exponent)
@@ -306,7 +356,9 @@ class RecolorApp(tk.Tk):
         count_vals = 0
 
         # Parse the apply_setting to determine what to output
-        use_shading = "shaded" in apply_setting.lower()
+        lower_apply = apply_setting.lower()
+        use_shading = "shaded" in lower_apply
+        mode = "rebecca" if "rebecca" in lower_apply else "osrs"
 
         for b in blocks:
             arr_to = find_array_after("recolorTo", b) or []
@@ -314,9 +366,9 @@ class RecolorApp(tk.Tk):
             # Process each index
             for idx in arr_to:
                 shaded = idx
-                if use_shading:
+                if use_shading and mode != "rebecca":
                     shaded = shade_lightness_on_index(idx, lscale, lmin, lmax)
-                r, g, b = self._index_to_rgb(shaded, exponent)
+                r, g, b = self._index_to_rgb(shaded, exponent, mode)
                 argb = rgb_to_argb_int(r, g, b)
                 self.tree.insert("", "end", values=(argb,))
                 count_vals += 1
